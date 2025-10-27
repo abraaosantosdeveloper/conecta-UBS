@@ -1,21 +1,26 @@
 -- =============================================
 -- SISTEMA DE CONSULTAS - UNIDADE BÁSICA DE SAÚDE
--- SQL Server / Azure SQL Database
+-- MySQL / MariaDB
 -- =============================================
+
+-- Criar o banco de dados
+CREATE DATABASE IF NOT EXISTS conecta_ubs;
+USE conecta_ubs;
 
 -- Tabela de Usuários (base para todos)
 CREATE TABLE Usuarios (
-    id_usuario INT PRIMARY KEY IDENTITY(1,1),
-    nome_completo NVARCHAR(200) NOT NULL,
+    id_usuario INT PRIMARY KEY AUTO_INCREMENT,
+    nome_completo VARCHAR(200) NOT NULL,
     cpf VARCHAR(11) UNIQUE NOT NULL,
-    email NVARCHAR(100) UNIQUE,
+    email VARCHAR(100) UNIQUE,
+    senha_hash VARCHAR(255) NOT NULL,
     telefone VARCHAR(15),
     data_nascimento DATE NOT NULL,
-    endereco NVARCHAR(300),
+    endereco VARCHAR(300),
     tipo_perfil VARCHAR(20) NOT NULL CHECK (tipo_perfil IN ('PACIENTE', 'PROFISSIONAL')),
-    ativo BIT DEFAULT 1,
-    data_cadastro DATETIME DEFAULT GETDATE(),
-    data_atualizacao DATETIME DEFAULT GETDATE()
+    ativo BOOLEAN DEFAULT TRUE,
+    data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- Índice para busca rápida por CPF e tipo
@@ -24,10 +29,10 @@ CREATE INDEX idx_usuarios_tipo ON Usuarios(tipo_perfil);
 
 -- Tabela de Especialidades Médicas
 CREATE TABLE Especialidades (
-    id_especialidade INT PRIMARY KEY IDENTITY(1,1),
-    nome_especialidade NVARCHAR(100) NOT NULL UNIQUE,
-    descricao NVARCHAR(500),
-    ativo BIT DEFAULT 1
+    id_especialidade INT PRIMARY KEY AUTO_INCREMENT,
+    nome_especialidade VARCHAR(100) NOT NULL UNIQUE,
+    descricao VARCHAR(500),
+    ativo BOOLEAN DEFAULT TRUE
 );
 
 -- Tabela de Profissionais (extends Usuarios)
@@ -44,22 +49,22 @@ CREATE TABLE Pacientes (
     id_paciente INT PRIMARY KEY,
     cartao_sus VARCHAR(15) UNIQUE,
     tipo_sanguineo VARCHAR(3),
-    alergias NVARCHAR(500),
-    observacoes_gerais NVARCHAR(1000),
+    alergias VARCHAR(500),
+    observacoes_gerais VARCHAR(1000),
     FOREIGN KEY (id_paciente) REFERENCES Usuarios(id_usuario)
 );
 
 -- Tabela de Prontuários (UM por paciente - documento geral)
 CREATE TABLE Prontuarios (
-    id_prontuario INT PRIMARY KEY IDENTITY(1,1),
+    id_prontuario INT PRIMARY KEY AUTO_INCREMENT,
     id_paciente INT NOT NULL UNIQUE, -- Cada paciente tem apenas UM prontuário
     status_paciente VARCHAR(20) NOT NULL DEFAULT 'VIVO' 
         CHECK (status_paciente IN ('VIVO', 'OBITO')),
     data_obito DATE NULL,
-    causa_obito NVARCHAR(500) NULL,
-    observacoes_gerais NVARCHAR(2000),
-    data_criacao DATETIME DEFAULT GETDATE(),
-    data_atualizacao DATETIME DEFAULT GETDATE(),
+    causa_obito VARCHAR(500) NULL,
+    observacoes_gerais VARCHAR(2000),
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (id_paciente) REFERENCES Pacientes(id_paciente)
 );
 
@@ -67,22 +72,24 @@ CREATE INDEX idx_prontuario_paciente ON Prontuarios(id_paciente);
 
 -- Tabela de Consultas (com controle de conflito de horário)
 CREATE TABLE Consultas (
-    id_consulta INT PRIMARY KEY IDENTITY(1,1),
+    id_consulta INT PRIMARY KEY AUTO_INCREMENT,
     id_paciente INT NOT NULL,
     id_profissional INT NOT NULL,
     data_consulta DATE NOT NULL,
     hora_consulta TIME NOT NULL,
     status_consulta VARCHAR(20) NOT NULL DEFAULT 'AGENDADA' 
         CHECK (status_consulta IN ('AGENDADA', 'CONFIRMADA', 'REALIZADA', 'CANCELADA', 'FALTOU')),
-    motivo_consulta NVARCHAR(500),
-    data_agendamento DATETIME DEFAULT GETDATE(),
+    motivo_consulta VARCHAR(500),
+    data_agendamento DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_paciente) REFERENCES Pacientes(id_paciente),
     FOREIGN KEY (id_profissional) REFERENCES Profissionais(id_profissional)
 );
 
 -- CONSTRAINT ÚNICA: impede consultas no mesmo horário para o mesmo profissional
-CREATE UNIQUE INDEX idx_consulta_unica ON Consultas(id_profissional, data_consulta, hora_consulta) 
-    WHERE status_consulta NOT IN ('CANCELADA');
+-- MySQL não suporta índices filtrados, então usamos UNIQUE normal
+-- Para permitir múltiplas consultas canceladas no mesmo horário, 
+-- você precisará validar isso na aplicação
+CREATE UNIQUE INDEX idx_consulta_unica ON Consultas(id_profissional, data_consulta, hora_consulta, status_consulta);
 
 -- Índices para performance
 CREATE INDEX idx_consultas_paciente ON Consultas(id_paciente, data_consulta DESC);
@@ -92,18 +99,18 @@ CREATE INDEX idx_consultas_data ON Consultas(data_consulta, hora_consulta);
 -- Tabela de Histórico de Atendimentos (MUITOS registros por prontuário)
 -- Cada consulta realizada gera uma entrada no histórico
 CREATE TABLE Historico_Atendimentos (
-    id_historico INT PRIMARY KEY IDENTITY(1,1),
+    id_historico INT PRIMARY KEY AUTO_INCREMENT,
     id_prontuario INT NOT NULL,
     id_consulta INT NOT NULL UNIQUE, -- Cada consulta gera UM registro de histórico
     id_profissional INT NOT NULL,
-    data_atendimento DATETIME NOT NULL DEFAULT GETDATE(),
-    queixa_principal NVARCHAR(1000),
-    historico_doenca_atual NVARCHAR(2000),
-    exame_fisico NVARCHAR(2000),
-    hipotese_diagnostica NVARCHAR(1000) NOT NULL,
-    diagnostico_final NVARCHAR(1000),
-    conduta NVARCHAR(2000),
-    observacoes NVARCHAR(2000),
+    data_atendimento DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    queixa_principal VARCHAR(1000),
+    historico_doenca_atual VARCHAR(2000),
+    exame_fisico VARCHAR(2000),
+    hipotese_diagnostica VARCHAR(1000) NOT NULL,
+    diagnostico_final VARCHAR(1000),
+    conduta VARCHAR(2000),
+    observacoes VARCHAR(2000),
     FOREIGN KEY (id_prontuario) REFERENCES Prontuarios(id_prontuario),
     FOREIGN KEY (id_consulta) REFERENCES Consultas(id_consulta),
     FOREIGN KEY (id_profissional) REFERENCES Profissionais(id_profissional)
@@ -114,12 +121,12 @@ CREATE INDEX idx_historico_consulta ON Historico_Atendimentos(id_consulta);
 
 -- Tabela de Receitas Médicas (vinculadas ao histórico de atendimento)
 CREATE TABLE Receitas (
-    id_receita INT PRIMARY KEY IDENTITY(1,1),
+    id_receita INT PRIMARY KEY AUTO_INCREMENT,
     id_historico INT NOT NULL, -- Vinculada ao registro do histórico
     id_profissional INT NOT NULL,
-    data_emissao DATETIME DEFAULT GETDATE(),
+    data_emissao DATETIME DEFAULT CURRENT_TIMESTAMP,
     validade_dias INT DEFAULT 30,
-    observacoes NVARCHAR(1000),
+    observacoes VARCHAR(1000),
     FOREIGN KEY (id_historico) REFERENCES Historico_Atendimentos(id_historico),
     FOREIGN KEY (id_profissional) REFERENCES Profissionais(id_profissional)
 );
@@ -128,28 +135,28 @@ CREATE INDEX idx_receitas_historico ON Receitas(id_historico);
 
 -- Tabela de Medicamentos da Receita
 CREATE TABLE Receita_Medicamentos (
-    id_receita_medicamento INT PRIMARY KEY IDENTITY(1,1),
+    id_receita_medicamento INT PRIMARY KEY AUTO_INCREMENT,
     id_receita INT NOT NULL,
-    nome_medicamento NVARCHAR(200) NOT NULL,
-    dosagem NVARCHAR(100) NOT NULL,
+    nome_medicamento VARCHAR(200) NOT NULL,
+    dosagem VARCHAR(100) NOT NULL,
     quantidade VARCHAR(50) NOT NULL,
     via_administracao VARCHAR(50),
-    posologia NVARCHAR(500) NOT NULL, -- "Tomar 1 comprimido a cada 8 horas"
+    posologia VARCHAR(500) NOT NULL, -- "Tomar 1 comprimido a cada 8 horas"
     duracao_tratamento VARCHAR(100),
     FOREIGN KEY (id_receita) REFERENCES Receitas(id_receita)
 );
 
 -- Tabela de Tratamentos Recomendados (vinculados ao histórico de atendimento)
 CREATE TABLE Tratamentos (
-    id_tratamento INT PRIMARY KEY IDENTITY(1,1),
+    id_tratamento INT PRIMARY KEY AUTO_INCREMENT,
     id_historico INT NOT NULL, -- Vinculado ao registro do histórico
     tipo_tratamento VARCHAR(50) NOT NULL, -- 'MEDICAMENTOSO', 'FISIOTERAPIA', 'CIRURGICO', 'ACOMPANHAMENTO'
-    descricao_tratamento NVARCHAR(2000) NOT NULL,
+    descricao_tratamento VARCHAR(2000) NOT NULL,
     data_inicio DATE,
     data_fim_prevista DATE,
     status_tratamento VARCHAR(20) DEFAULT 'EM_ANDAMENTO' 
         CHECK (status_tratamento IN ('EM_ANDAMENTO', 'CONCLUIDO', 'INTERROMPIDO')),
-    observacoes NVARCHAR(1000),
+    observacoes VARCHAR(1000),
     FOREIGN KEY (id_historico) REFERENCES Historico_Atendimentos(id_historico)
 );
 
@@ -175,20 +182,20 @@ INSERT INTO Especialidades (nome_especialidade, descricao) VALUES
 
 -- 1. Inserir um profissional (Dr. Carlos - Cardiologista)
 -- Na API: primeiro insere o usuário e captura o ID retornado
-INSERT INTO Usuarios (nome_completo, cpf, email, telefone, data_nascimento, tipo_perfil)
-VALUES ('Dr. Carlos Alberto Santos', '12345678901', 'carlos.santos@ubs.gov.br', '81987654321', '1975-05-15', 'PROFISSIONAL');
--- Retorna: id_usuario = 1
+INSERT INTO Usuarios (nome_completo, cpf, email, senha_hash, telefone, data_nascimento, tipo_perfil)
+VALUES ('Dr. Carlos Alberto Santos', '12345678901', 'carlos.santos@ubs.gov.br', 'hash_senha_aqui', '81987654321', '1975-05-15', 'PROFISSIONAL');
+-- Retorna: id_usuario = 1 (use LAST_INSERT_ID() no MySQL)
 
 INSERT INTO Profissionais (id_profissional, registro_profissional, id_especialidade)
-VALUES (1, 'CRM12345PE', 2); -- 2 = Cardiologia
+VALUES (LAST_INSERT_ID(), 'CRM12345PE', 2); -- 2 = Cardiologia
 
 -- 2. Inserir um paciente
-INSERT INTO Usuarios (nome_completo, cpf, email, telefone, data_nascimento, tipo_perfil)
-VALUES ('Maria Silva Santos', '98765432100', 'maria.silva@email.com', '81912345678', '1985-03-20', 'PACIENTE');
+INSERT INTO Usuarios (nome_completo, cpf, email, senha_hash, telefone, data_nascimento, tipo_perfil)
+VALUES ('Maria Silva Santos', '98765432100', 'maria.silva@email.com', 'hash_senha_aqui', '81912345678', '1985-03-20', 'PACIENTE');
 -- Retorna: id_usuario = 2
 
 INSERT INTO Pacientes (id_paciente, cartao_sus, tipo_sanguineo, alergias)
-VALUES (2, '123456789012345', 'O+', 'Penicilina');
+VALUES (LAST_INSERT_ID(), '123456789012345', 'O+', 'Penicilina');
 
 -- 3. Criar prontuário para o paciente
 INSERT INTO Prontuarios (id_paciente, status_paciente, observacoes_gerais)
@@ -226,8 +233,8 @@ VALUES (1, 1, 'Uso contínuo');
 
 INSERT INTO Receita_Medicamentos (id_receita, nome_medicamento, dosagem, quantidade, posologia, duracao_tratamento)
 VALUES 
-    (1, 'Losartana Potássica', '50mg', '30 comprimidos', 'Tomar 1 comprimido pela manhã', 'Uso contínuo'),
-    (1, 'Hidroclorotiazida', '25mg', '30 comprimidos', 'Tomar 1 comprimido pela manhã', 'Uso contínuo');
+    (LAST_INSERT_ID(), 'Losartana Potássica', '50mg', '30 comprimidos', 'Tomar 1 comprimido pela manhã', 'Uso contínuo'),
+    (LAST_INSERT_ID(), 'Hidroclorotiazida', '25mg', '30 comprimidos', 'Tomar 1 comprimido pela manhã', 'Uso contínuo');
 
 -- 8. Registrar tratamento
 INSERT INTO Tratamentos (id_historico, tipo_tratamento, descricao_tratamento, data_inicio, status_tratamento)
@@ -244,8 +251,7 @@ VALUES (
 -- =============================================
 
 -- View: Prontuário completo do paciente com todas as consultas
-GO
-CREATE VIEW vw_Prontuario_Completo AS
+CREATE OR REPLACE VIEW vw_Prontuario_Completo AS
 SELECT 
     p.id_prontuario,
     pac.id_paciente,
@@ -271,10 +277,9 @@ LEFT JOIN Historico_Atendimentos ha ON p.id_prontuario = ha.id_prontuario
 LEFT JOIN Profissionais prof ON ha.id_profissional = prof.id_profissional
 LEFT JOIN Usuarios u_prof ON prof.id_profissional = u_prof.id_usuario
 LEFT JOIN Especialidades e ON prof.id_especialidade = e.id_especialidade;
-GO
 
 -- View: Agenda completa do profissional
-CREATE VIEW vw_Agenda_Profissional AS
+CREATE OR REPLACE VIEW vw_Agenda_Profissional AS
 SELECT 
     c.id_consulta,
     c.data_consulta,
@@ -291,10 +296,9 @@ INNER JOIN Usuarios u_prof ON prof.id_profissional = u_prof.id_usuario
 INNER JOIN Especialidades e ON prof.id_especialidade = e.id_especialidade
 INNER JOIN Pacientes pac ON c.id_paciente = pac.id_paciente
 INNER JOIN Usuarios u_pac ON pac.id_paciente = u_pac.id_usuario;
-GO
 
 -- View: Histórico detalhado de atendimentos com receitas e tratamentos
-CREATE VIEW vw_Historico_Detalhado AS
+CREATE OR REPLACE VIEW vw_Historico_Detalhado AS
 SELECT 
     ha.id_historico,
     ha.data_atendimento,
@@ -318,36 +322,37 @@ INNER JOIN Usuarios u_prof ON prof.id_profissional = u_prof.id_usuario
 INNER JOIN Especialidades e ON prof.id_especialidade = e.id_especialidade
 LEFT JOIN Receitas r ON ha.id_historico = r.id_historico
 LEFT JOIN Tratamentos t ON ha.id_historico = t.id_historico;
-GO
 
 -- =============================================
 -- PROCEDURES ÚTEIS
 -- =============================================
 
 -- Procedure: Verificar disponibilidade de horário
-CREATE PROCEDURE sp_VerificarDisponibilidade
-    @id_profissional INT,
-    @data_consulta DATE,
-    @hora_consulta TIME
-AS
+DELIMITER $$
+
+CREATE PROCEDURE sp_VerificarDisponibilidade(
+    IN p_id_profissional INT,
+    IN p_data_consulta DATE,
+    IN p_hora_consulta TIME
+)
 BEGIN
     IF EXISTS (
         SELECT 1 FROM Consultas 
-        WHERE id_profissional = @id_profissional 
-        AND data_consulta = @data_consulta 
-        AND hora_consulta = @hora_consulta
+        WHERE id_profissional = p_id_profissional 
+        AND data_consulta = p_data_consulta 
+        AND hora_consulta = p_hora_consulta
         AND status_consulta NOT IN ('CANCELADA')
-    )
-        SELECT 0 AS Disponivel, 'Horário já ocupado' AS Mensagem
+    ) THEN
+        SELECT 0 AS Disponivel, 'Horário já ocupado' AS Mensagem;
     ELSE
-        SELECT 1 AS Disponivel, 'Horário disponível' AS Mensagem
-END;
-GO
+        SELECT 1 AS Disponivel, 'Horário disponível' AS Mensagem;
+    END IF;
+END$$
 
 -- Procedure: Buscar histórico completo de um paciente
-CREATE PROCEDURE sp_BuscarHistoricoPaciente
-    @id_paciente INT
-AS
+CREATE PROCEDURE sp_BuscarHistoricoPaciente(
+    IN p_id_paciente INT
+)
 BEGIN
     SELECT 
         ha.data_atendimento,
@@ -361,7 +366,8 @@ BEGIN
     INNER JOIN Profissionais prof ON ha.id_profissional = prof.id_profissional
     INNER JOIN Usuarios u_prof ON prof.id_profissional = u_prof.id_usuario
     INNER JOIN Especialidades e ON prof.id_especialidade = e.id_especialidade
-    WHERE p.id_paciente = @id_paciente
+    WHERE p.id_paciente = p_id_paciente
     ORDER BY ha.data_atendimento DESC;
-END;
-GO
+END$$
+
+DELIMITER ;
